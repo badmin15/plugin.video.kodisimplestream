@@ -26,24 +26,16 @@ def _as_int(value: Any) -> int:
         return 0
 
 
-def _first_non_empty(params: Dict[str, Any], keys: List[str]) -> str:
-    for key in keys:
-        value = (params.get(key) or "")
-        if str(value).strip():
-            return str(value).strip()
-    return ""
-
-
 def build_tmdbh_queries(params: Dict[str, Any]) -> List[str]:
     mediatype = (params.get("mediatype") or "").lower()
     queries: List[str] = []
 
     if mediatype == "episode":
-        showname = _first_non_empty(params, ["showname", "tvshowtitle", "show_title"])
-        show_originaltitle = _first_non_empty(params, ["show_originaltitle", "tvshoworiginaltitle", "show_original"])
-        episode_title = _first_non_empty(params, ["episode_title", "title", "episodetitle"])
-        season = _as_int(_first_non_empty(params, ["season"]))
-        episode = _as_int(_first_non_empty(params, ["episode"]))
+        showname = (params.get("showname") or "").strip()
+        show_originaltitle = (params.get("show_originaltitle") or "").strip()
+        episode_title = (params.get("episode_title") or "").strip()
+        season = _as_int(params.get("season"))
+        episode = _as_int(params.get("episode"))
         if showname and season > 0 and episode > 0:
             queries.append(f"{showname} S{season:02d}E{episode:02d}")
             if show_originaltitle and normalize_title(show_originaltitle) != normalize_title(showname):
@@ -56,11 +48,9 @@ def build_tmdbh_queries(params: Dict[str, Any]) -> List[str]:
                 if show_originaltitle and normalize_title(show_originaltitle) != normalize_title(showname):
                     queries.append(f"{show_originaltitle} {episode_title}")
     else:
-        title = _first_non_empty(params, ["title", "name", "label"])
-        originaltitle = _first_non_empty(params, ["originaltitle", "original_title"])
-        year = _first_non_empty(params, ["year", "premiered"])
-        if len(year) >= 4:
-            year = year[:4]
+        title = (params.get("title") or "").strip()
+        originaltitle = (params.get("originaltitle") or "").strip()
+        year = str(params.get("year") or "").strip()
         if title:
             if year:
                 queries.append(f"{title} {year}")
@@ -140,11 +130,11 @@ def score_movie_result(file_info: Dict[str, Any], params: Dict[str, Any]) -> int
 def score_episode_result(file_info: Dict[str, Any], params: Dict[str, Any]) -> int:
     name = file_info.get("name", "")
     normalized = normalize_title(name)
-    show = normalize_title(_first_non_empty(params, ["showname", "tvshowtitle", "show_title"]))
-    show_orig = normalize_title(_first_non_empty(params, ["show_originaltitle", "tvshoworiginaltitle", "show_original"]))
-    ep_title = normalize_title(_first_non_empty(params, ["episode_title", "title", "episodetitle"]))
-    season = _as_int(_first_non_empty(params, ["season"]))
-    episode = _as_int(_first_non_empty(params, ["episode"]))
+    show = normalize_title(params.get("showname", ""))
+    show_orig = normalize_title(params.get("show_originaltitle", ""))
+    ep_title = normalize_title(params.get("episode_title", ""))
+    season = _as_int(params.get("season"))
+    episode = _as_int(params.get("episode"))
 
     score = 0
     if show and show in normalized:

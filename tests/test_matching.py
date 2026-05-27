@@ -21,12 +21,6 @@ class MatchingTests(unittest.TestCase):
         self.assertIn("Silo S01E02", queries)
         self.assertIn("Silo 1x02", queries)
 
-
-    def test_episode_query_generation_from_tvshowtitle_alias(self):
-        params = {"mediatype": "episode", "tvshowtitle": "Andor", "season": "1", "episode": "3", "title": "Reckoning"}
-        queries = build_tmdbh_queries(params)
-        self.assertIn("Andor S01E03", queries)
-
     def test_movie_scoring_year_and_title(self):
         params = {"title": "Dune", "originaltitle": "Dune", "year": "2021"}
         good = score_movie_result({"name": "Dune.2021.1080p.WEB-DL.mkv"}, params)
