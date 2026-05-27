@@ -67,3 +67,26 @@ msgstr "Enter movie title to search on CSFD"
 msgctxt "#30015"
 msgid "Enter series title to search on CSFD"
 msgstr "Enter series title to search on CSFD" 
+msgctxt "#30017"
+msgid "TMDb Helper"
+msgstr "TMDb Helper"
+
+msgctxt "#30018"
+msgid "Auto-play best source"
+msgstr "Auto-play best source"
+
+msgctxt "#30019"
+msgid "Auto-play minimum score"
+msgstr "Auto-play minimum score"
+
+msgctxt "#30020"
+msgid "Maximum ranked results"
+msgstr "Maximum ranked results"
+
+msgctxt "#30021"
+msgid "Preferred quality mode (1080p_or_best|720p_or_best|highest)"
+msgstr "Preferred quality mode (1080p_or_best|720p_or_best|highest)"
+
+msgctxt "#30022"
+msgid "Show debug scores in labels and logs"
+msgstr "Show debug scores in labels and logs"
