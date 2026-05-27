@@ -48,3 +48,19 @@ Pokud narazíte na problémy nebo máte otázky:
 - Vytvořte nový problém, pokud váš problém ještě nebyl nahlášen
 
 Máte-li nápad na vylepšení doplňku, neváhejte ho sdílet v sekci Issues nebo rovnou přispět vlastním kódem prostřednictvím Pull requestu (pomoc bych velmi ocenil, jelikož to je můj první addon pro Kodi). Veškeré návrhy na zlepšení jsou vítány!
+
+### TMDb Helper integrace
+1. Zkopírujte soubor `docs/tmdbhelper/kodisimplestream.json` do:
+   `userdata/addon_data/plugin.video.themoviedb.helper/players/kodisimplestream.json`
+2. V TMDb Helper otevřete nastavení přehrávačů a povolte/vyberte `KodiSimpleStream`.
+3. TMDb Helper pak při kliknutí na film/epizodu zavolá trasu:
+   `plugin://plugin.video.kodisimplestream/?action=tmdbh_play...`
+
+Nová nastavení addonu (sekce **TMDb Helper**):
+- **Auto-play best source** – automaticky přehraje nejlépe skórovaný zdroj.
+- **Auto-play minimum score** – minimální skóre, od kterého dojde k auto-play.
+- **Maximum ranked results** – omezení počtu kandidátů v seznamu.
+- **Preferred quality mode** – jemné řazení kvality (`1080p_or_best`, `720p_or_best`, `highest`).
+- **Show debug scores in labels and logs** – zobrazí skóre i v názvech položek a logu.
+
+Poznámka: přesnost párování závisí na kvalitě názvů souborů na Webshare a kvalitě metadat předaných z TMDb Helper.
