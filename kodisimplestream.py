@@ -10,6 +10,8 @@ from __future__ import annotations  # Enables forward references in older Python
 import ast
 import sys
 from typing import Any, Dict, List, Optional
+
+import re
 from urllib.parse import parse_qsl, urlencode
 
 import xbmc
@@ -19,6 +21,13 @@ import xbmcplugin
 
 from resources.lib.webshare import WebshareAPI
 from resources.lib.csfd import CSFD
+from resources.lib.matching import (
+    build_tmdbh_queries,
+    parse_quality,
+    parse_size,
+    score_episode_result,
+    score_movie_result,
+)
 
 # ----------------------------------------------------------------------------
 # Global variables – provided by Kodi during plugin initialization
@@ -298,6 +307,161 @@ def search_csfd_series() -> None:
         results = CSFD().search(term, type="series")
         list_csfd_results(results, "series")
 
+
+
+def _format_size(size_bytes: int) -> str:
+    if size_bytes <= 0:
+        return ""
+    units = ["B", "KB", "MB", "GB", "TB"]
+    size = float(size_bytes)
+    idx = 0
+    while size >= 1024 and idx < len(units) - 1:
+        size /= 1024.0
+        idx += 1
+    return f"{size:.1f} {units[idx]}" if idx > 0 else f"{int(size)} {units[idx]}"
+
+
+def _prefer_quality_value(name: str) -> int:
+    setting = (_addon.getSetting("tmdbh_prefer_quality") or "1080p_or_best").lower()
+    order = {"2160p": 4, "1080p": 3, "720p": 2, "sd": 1}
+    base = order.get(name, 0)
+    if setting == "highest":
+        return base
+    if setting == "720p_or_best":
+        return base if base >= 2 else 0
+    # default 1080p_or_best
+    return base if base >= 3 else 0
+
+
+def search_and_score_tmdbh(params: Dict[str, Any]) -> List[Dict[str, Any]]:
+    api = get_api()
+    if not api:
+        return []
+
+    queries = build_tmdbh_queries(params)
+    if not queries:
+        return []
+
+    max_results = int(_addon.getSetting("tmdbh_max_results") or "20")
+    mediatype = (params.get("mediatype") or "movie").lower()
+    merged: Dict[str, Dict[str, Any]] = {}
+
+    xbmc.log(f"[KodiSimpleStream] TMDbH queries: {queries}", xbmc.LOGINFO)
+
+    for term in queries:
+        try:
+            response = api.search(term).get("response", {})
+        except Exception as exc:
+            xbmc.log(f"[KodiSimpleStream] search failed for term '{term}': {exc}", xbmc.LOGWARNING)
+            continue
+
+        files = response.get("file", [])
+        if isinstance(files, dict):
+            files = [files]
+
+        for file_info in files:
+            ident = file_info.get("ident")
+            name = file_info.get("name", "")
+            if not ident or not name:
+                continue
+            score = score_episode_result(file_info, params) if mediatype == "episode" else score_movie_result(file_info, params)
+            quality = parse_quality(name)
+            size_bytes = parse_size(file_info.get("size"))
+            item = {
+                "ident": ident,
+                "name": name,
+                "img": file_info.get("img", ""),
+                "size": size_bytes,
+                "quality": quality.get("quality", "sd"),
+                "score": score,
+                "quality_pref": _prefer_quality_value(quality.get("quality", "sd")),
+            }
+            prev = merged.get(ident)
+            if prev is None or item["score"] > prev["score"]:
+                merged[ident] = item
+
+    sorted_items = sorted(
+        merged.values(),
+        key=lambda x: (x["score"], x["quality_pref"], x["size"]),
+        reverse=True,
+    )
+    debug_scores = _addon.getSettingBool("tmdbh_show_debug_scores")
+    for it in sorted_items[:10]:
+        if debug_scores:
+            xbmc.log(
+                f"[KodiSimpleStream] score={it['score']} quality={it['quality']} size={it['size']} name={it['name']}",
+                xbmc.LOGINFO,
+            )
+    return sorted_items[:max_results]
+
+
+def play_ident(ident: str) -> None:
+    api = get_api()
+    if not api:
+        return
+    video_url = api.get_download_link(ident)
+    if not video_url:
+        xbmcgui.Dialog().notification(_addon.getAddonInfo("name"), "Unable to resolve selected source", xbmcgui.NOTIFICATION_ERROR, 5000)
+        return
+    play_video(video_url)
+
+
+def list_tmdbh_sources(params: Dict[str, Any]) -> None:
+    results = search_and_score_tmdbh(params)
+    if not results:
+        xbmcgui.Dialog().notification(_addon.getAddonInfo("name"), "No matching sources found", xbmcgui.NOTIFICATION_INFO, 4000)
+        xbmcplugin.endOfDirectory(_handle)
+        return
+
+    show_score = _addon.getSettingBool("tmdbh_show_debug_scores")
+    for result in results:
+        parts = []
+        if show_score:
+            parts.append(f"[{result['score']}]")
+        parts.append(result["quality"])
+        parts.append(result["name"])
+        size_txt = _format_size(result["size"])
+        if size_txt:
+            parts.append(size_txt)
+        label = " | ".join(parts)
+        item = xbmcgui.ListItem(label=label)
+        item.setInfo("video", {"title": result["name"], "size": result["size"]})
+        item.setArt({"poster": result.get("img", ""), "fanart": result.get("img", "")})
+        item.setProperty("IsPlayable", "true")
+        xbmcplugin.addDirectoryItem(_handle, get_url(action="play_ident", ident=result["ident"]), item, isFolder=False)
+
+    xbmcplugin.setContent(_handle, "videos")
+    xbmcplugin.endOfDirectory(_handle)
+
+
+def play_best_tmdbh_source(params: Dict[str, Any]) -> None:
+    results = search_and_score_tmdbh(params)
+    if not results:
+        xbmcgui.Dialog().notification(_addon.getAddonInfo("name"), "No matching sources found", xbmcgui.NOTIFICATION_INFO, 4000)
+        return
+
+    min_score = int(_addon.getSetting("tmdbh_auto_play_min_score") or "80")
+    best = results[0]
+    if best["score"] >= min_score:
+        xbmc.log(f"[KodiSimpleStream] Autoplaying best source score={best['score']} name={best['name']}", xbmc.LOGINFO)
+        play_ident(best["ident"])
+        return
+
+    xbmc.log(f"[KodiSimpleStream] Best score {best['score']} below threshold {min_score}, showing sources", xbmc.LOGINFO)
+    list_tmdbh_sources(params)
+
+
+def tmdbh_play(params: Dict[str, Any]) -> None:
+    queries = build_tmdbh_queries(params)
+    if not queries:
+        xbmcgui.Dialog().notification(_addon.getAddonInfo("name"), "Missing required metadata for TMDb Helper search", xbmcgui.NOTIFICATION_ERROR, 4000)
+        return
+
+    if _addon.getSettingBool("tmdbh_auto_play_best"):
+        play_best_tmdbh_source(params)
+    else:
+        list_tmdbh_sources(params)
+
 # ----------------------------------------------------------------------------
 # Placeholder for unimplemented features
 # ----------------------------------------------------------------------------
@@ -330,6 +494,10 @@ def router(paramstring: str) -> None:
         play_video(params["video"])
     elif action == "search_webshare":
         search_webshare()
+    elif action == "play_ident":
+        play_ident(params["ident"])
+    elif action == "tmdbh_play":
+        tmdbh_play(params)
     elif action == "search_csfd_movie":
         search_csfd_movie()
     elif action == "search_csfd_series":

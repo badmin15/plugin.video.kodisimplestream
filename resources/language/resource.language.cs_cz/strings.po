@@ -67,3 +67,26 @@ msgstr "Zadejte název filmu pro vyhledání na CSFD"
 msgctxt "#30015"
 msgid "Enter series title to search on CSFD"
 msgstr "Zadejte název seriálu pro vyhledání na CSFD" 
+msgctxt "#30017"
+msgid "TMDb Helper"
+msgstr "TMDb Helper"
+
+msgctxt "#30018"
+msgid "Auto-play best source"
+msgstr "Automaticky přehrát nejlepší zdroj"
+
+msgctxt "#30019"
+msgid "Auto-play minimum score"
+msgstr "Minimální skóre pro automatické přehrání"
+
+msgctxt "#30020"
+msgid "Maximum ranked results"
+msgstr "Maximální počet seřazených výsledků"
+
+msgctxt "#30021"
+msgid "Preferred quality mode (1080p_or_best|720p_or_best|highest)"
+msgstr "Režim preferované kvality (1080p_or_best|720p_or_best|highest)"
+
+msgctxt "#30022"
+msgid "Show debug scores in labels and logs"
+msgstr "Zobrazit debug skóre v názvech a logu"
