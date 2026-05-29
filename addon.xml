@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <addon id="plugin.video.kodisimplestream"
-version="0.6.0"
+version="0.6.1"
 name="kodisimplestream"
 provider-name="kecerim">
 <requires>
@@ -19,6 +19,11 @@ provider-name="kecerim">
   <settings>
     <setting id="username" type="text" label="Username" default="" />
     <setting id="password" type="text" label="Password" option="hidden" default="" />
+    <setting label="tmdbh_auto_play_best" type="bool" id="tmdbh_auto_play_best" default="false" />
+    <setting label="tmdbh_auto_play_min_score" type="number" id="tmdbh_auto_play_min_score" default="80" />
+    <setting label="tmdbh_max_results" type="number" id="tmdbh_max_results" default="20" />
+    <setting label="tmdbh_prefer_quality" type="text" id="tmdbh_prefer_quality" default="1080p_or_best" />
+    <setting label="tmdbh_show_debug_scores" type="bool" id="tmdbh_show_debug_scores" default="false" />
   </settings>
 </extension>
 </addon>
