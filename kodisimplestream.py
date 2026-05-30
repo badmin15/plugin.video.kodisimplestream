@@ -398,12 +398,47 @@ def search_and_score_tmdbh(params: Dict[str, Any]) -> List[Dict[str, Any]]:
 def play_ident(ident: str) -> None:
     api = get_api()
     if not api:
+        xbmcplugin.setResolvedUrl(_handle, False, xbmcgui.ListItem())
         return
     video_url = api.get_download_link(ident)
     if not video_url:
         xbmcgui.Dialog().notification(_addon.getAddonInfo("name"), "Unable to resolve selected source", xbmcgui.NOTIFICATION_ERROR, 5000)
+        xbmcplugin.setResolvedUrl(_handle, False, xbmcgui.ListItem())
         return
     play_video(video_url)
+
+
+def _tmdbh_source_label(result: Dict[str, Any], show_score: bool) -> str:
+    parts = []
+    if show_score:
+        parts.append(f"[{result['score']}]")
+    parts.append(result["quality"])
+    parts.append(result["name"])
+    size_txt = _format_size(result["size"])
+    if size_txt:
+        parts.append(size_txt)
+    return " | ".join(parts)
+
+
+def select_tmdbh_source(params: Dict[str, Any]) -> None:
+    """Shows a modal source picker for TMDb Helper and resolves the selected item."""
+    results = search_and_score_tmdbh(params)
+    if not results:
+        xbmcgui.Dialog().notification(_addon.getAddonInfo("name"), "No matching sources found", xbmcgui.NOTIFICATION_INFO, 4000)
+        xbmcplugin.setResolvedUrl(_handle, False, xbmcgui.ListItem())
+        return
+
+    show_score = _addon.getSettingBool("tmdbh_show_debug_scores")
+    labels = [_tmdbh_source_label(result, show_score) for result in results]
+    selected = xbmcgui.Dialog().select("Select Webshare source", labels)
+    if selected < 0:
+        xbmc.log("[KodiSimpleStream] TMDbH source selection cancelled", xbmc.LOGINFO)
+        xbmcplugin.setResolvedUrl(_handle, False, xbmcgui.ListItem())
+        return
+
+    chosen = results[selected]
+    xbmc.log(f"[KodiSimpleStream] TMDbH selected source score={chosen['score']} name={chosen['name']}", xbmc.LOGINFO)
+    play_ident(chosen["ident"])
 
 
 def list_tmdbh_sources(params: Dict[str, Any]) -> None:
@@ -415,15 +450,7 @@ def list_tmdbh_sources(params: Dict[str, Any]) -> None:
 
     show_score = _addon.getSettingBool("tmdbh_show_debug_scores")
     for result in results:
-        parts = []
-        if show_score:
-            parts.append(f"[{result['score']}]")
-        parts.append(result["quality"])
-        parts.append(result["name"])
-        size_txt = _format_size(result["size"])
-        if size_txt:
-            parts.append(size_txt)
-        label = " | ".join(parts)
+        label = _tmdbh_source_label(result, show_score)
         item = xbmcgui.ListItem(label=label)
         item.setInfo("video", {"title": result["name"], "size": result["size"]})
         item.setArt({"poster": result.get("img", ""), "fanart": result.get("img", "")})
@@ -438,6 +465,7 @@ def play_best_tmdbh_source(params: Dict[str, Any]) -> None:
     results = search_and_score_tmdbh(params)
     if not results:
         xbmcgui.Dialog().notification(_addon.getAddonInfo("name"), "No matching sources found", xbmcgui.NOTIFICATION_INFO, 4000)
+        xbmcplugin.setResolvedUrl(_handle, False, xbmcgui.ListItem())
         return
 
     min_score = int(_addon.getSetting("tmdbh_auto_play_min_score") or "80")
@@ -447,20 +475,21 @@ def play_best_tmdbh_source(params: Dict[str, Any]) -> None:
         play_ident(best["ident"])
         return
 
-    xbmc.log(f"[KodiSimpleStream] Best score {best['score']} below threshold {min_score}, showing sources", xbmc.LOGINFO)
-    list_tmdbh_sources(params)
+    xbmc.log(f"[KodiSimpleStream] Best score {best['score']} below threshold {min_score}, showing source picker", xbmc.LOGINFO)
+    select_tmdbh_source(params)
 
 
 def tmdbh_play(params: Dict[str, Any]) -> None:
     queries = build_tmdbh_queries(params)
     if not queries:
         xbmcgui.Dialog().notification(_addon.getAddonInfo("name"), "Missing required metadata for TMDb Helper search", xbmcgui.NOTIFICATION_ERROR, 4000)
+        xbmcplugin.setResolvedUrl(_handle, False, xbmcgui.ListItem())
         return
 
     if _addon.getSettingBool("tmdbh_auto_play_best"):
         play_best_tmdbh_source(params)
     else:
-        list_tmdbh_sources(params)
+        select_tmdbh_source(params)
 
 # ----------------------------------------------------------------------------
 # Placeholder for unimplemented features

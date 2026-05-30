@@ -52,9 +52,11 @@ Máte-li nápad na vylepšení doplňku, neváhejte ho sdílet v sekci Issues ne
 ### TMDb Helper integrace
 1. Zkopírujte soubor `docs/tmdbhelper/kodisimplestream.json` do:
    `userdata/addon_data/plugin.video.themoviedb.helper/players/kodisimplestream.json`
+   Pokud už tam starší soubor je, přepište jej novou verzí.
 2. V TMDb Helper otevřete nastavení přehrávačů a povolte/vyberte `KodiSimpleStream`.
 3. TMDb Helper pak při kliknutí na film/epizodu zavolá trasu:
    `plugin://plugin.video.kodisimplestream/?action=tmdbh_play...`
+4. Addon vyhledá Webshare zdroje a při vypnutém auto-play zobrazí modální výběr zdroje přímo v TMDb Helper přehrávacím toku. Po výběru se zdroj vyřeší přes `play_ident`.
 
 Nová nastavení addonu (sekce **TMDb Helper**):
 - **Auto-play best source** – automaticky přehraje nejlépe skórovaný zdroj.
