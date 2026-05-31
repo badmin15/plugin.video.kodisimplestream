@@ -21,6 +21,7 @@ import xbmcplugin
 
 from resources.lib.webshare import WebshareAPI
 from resources.lib.csfd import CSFD
+from resources.lib.source_ui import compact_label, metadata_line, normalize_source, source_heading
 from resources.lib.matching import (
     build_tmdbh_queries,
     parse_quality,
@@ -132,13 +133,25 @@ def list_search_results(search_terms: List[str]) -> None:
                 )
                 continue
 
-            for file_info in response["file"]:
-                item = xbmcgui.ListItem(label=file_info["name"])
+            files = response.get("file", [])
+            if isinstance(files, dict):
+                files = [files]
+
+            for file_info in files:
+                source = normalize_source(file_info)
+                label = f"[{source['quality_label']} {source['resolution_label']}] {source['title']}"
+                item = xbmcgui.ListItem(label=label, label2=metadata_line(source, include_score=True))
                 item.setInfo("video", {
-                    "title": file_info.get("name", term),
-                    "size": int(file_info.get("size", 0)),
+                    "title": source.get("title") or file_info.get("name", term),
+                    "size": source.get("size_bytes", 0),
+                    "mediatype": "video",
                 })
                 item.setArt({"poster": file_info.get("img", ""), "fanart": file_info.get("img", "")})
+                xbmc.log(
+                    f"[KodiSimpleStream] normalized Webshare source quality={source['quality_label']} "
+                    f"resolution={source['resolution_label']} name={source['original_name']}",
+                    xbmc.LOGDEBUG,
+                )
 
                 video_url = api.get_download_link(file_info["ident"])
                 if not video_url:
@@ -309,18 +322,6 @@ def search_csfd_series() -> None:
 
 
 
-def _format_size(size_bytes: int) -> str:
-    if size_bytes <= 0:
-        return ""
-    units = ["B", "KB", "MB", "GB", "TB"]
-    size = float(size_bytes)
-    idx = 0
-    while size >= 1024 and idx < len(units) - 1:
-        size /= 1024.0
-        idx += 1
-    return f"{size:.1f} {units[idx]}" if idx > 0 else f"{int(size)} {units[idx]}"
-
-
 def _prefer_quality_value(name: str) -> int:
     setting = (_addon.getSetting("tmdbh_prefer_quality") or "1080p_or_best").lower()
     order = {"2160p": 4, "1080p": 3, "720p": 2, "sd": 1}
@@ -333,12 +334,12 @@ def _prefer_quality_value(name: str) -> int:
     return base if base >= 3 else 0
 
 
-def search_and_score_tmdbh(params: Dict[str, Any]) -> List[Dict[str, Any]]:
+def search_and_score_tmdbh(params: Dict[str, Any], search_query: Optional[str] = None) -> List[Dict[str, Any]]:
     api = get_api()
     if not api:
         return []
 
-    queries = build_tmdbh_queries(params)
+    queries = [search_query] if search_query else build_tmdbh_queries(params)
     if not queries:
         return []
 
@@ -376,6 +377,14 @@ def search_and_score_tmdbh(params: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "score": score,
                 "quality_pref": _prefer_quality_value(quality.get("quality", "sd")),
             }
+            source = normalize_source(item)
+            source["score"] = score
+            item["source"] = source
+            xbmc.log(
+                f"[KodiSimpleStream] normalized source quality={source['quality_label']} "
+                f"resolution={source['resolution_label']} score={score} name={name}",
+                xbmc.LOGDEBUG,
+            )
             prev = merged.get(ident)
             if prev is None or item["score"] > prev["score"]:
                 merged[ident] = item
@@ -408,37 +417,96 @@ def play_ident(ident: str) -> None:
     play_video(video_url)
 
 
-def _tmdbh_source_label(result: Dict[str, Any], show_score: bool) -> str:
-    parts = []
-    if show_score:
-        parts.append(f"[{result['score']}]")
-    parts.append(result["quality"])
-    parts.append(result["name"])
-    size_txt = _format_size(result["size"])
-    if size_txt:
-        parts.append(size_txt)
-    return " | ".join(parts)
+def _tmdbh_source(result: Dict[str, Any]) -> Dict[str, Any]:
+    source = result.get("source") or normalize_source(result)
+    source["score"] = result.get("score", source.get("score"))
+    return source
+
+
+def _tmdbh_source_label(result: Dict[str, Any]) -> str:
+    return compact_label(_tmdbh_source(result), include_score=True)
+
+
+def _tmdbh_source_listitem(result: Dict[str, Any]) -> xbmcgui.ListItem:
+    source = _tmdbh_source(result)
+    item = xbmcgui.ListItem(
+        label=source_heading(source, include_score=True),
+        label2=metadata_line(source, include_score=False),
+    )
+    item.setInfo("video", {
+        "title": source.get("title") or result.get("name", ""),
+        "size": source.get("size_bytes", result.get("size", 0)),
+        "mediatype": "video",
+    })
+    item.setArt({"poster": result.get("img", ""), "fanart": result.get("img", "")})
+    return item
+
+
+def _select_tmdbh_dialog(labels: List[str], listitems: List[xbmcgui.ListItem]) -> int:
+    dialog = xbmcgui.Dialog()
+    try:
+        return dialog.select("Select Webshare source", listitems, 0, -1, True)
+    except TypeError:
+        xbmc.log(
+            "[KodiSimpleStream] detailed source picker unavailable; falling back to compact labels",
+            xbmc.LOGDEBUG,
+        )
+        return dialog.select("Select Webshare source", labels)
+
+
+def _primary_tmdbh_query(params: Dict[str, Any]) -> str:
+    queries = build_tmdbh_queries(params)
+    return queries[0] if queries else ""
+
+
+def prompt_change_search(current_query: str) -> Optional[str]:
+    """Prompt for a replacement Webshare search query."""
+    value = xbmcgui.Dialog().input("Change search", current_query or "")
+    new_query = (value or "").strip()
+    if not new_query or new_query == (current_query or "").strip():
+        xbmc.log("[KodiSimpleStream] search query change cancelled or unchanged", xbmc.LOGDEBUG)
+        return None
+    xbmc.log(f"[KodiSimpleStream] search query changed from '{current_query}' to '{new_query}'", xbmc.LOGINFO)
+    return new_query
 
 
 def select_tmdbh_source(params: Dict[str, Any]) -> None:
     """Shows a modal source picker for TMDb Helper and resolves the selected item."""
-    results = search_and_score_tmdbh(params)
-    if not results:
-        xbmcgui.Dialog().notification(_addon.getAddonInfo("name"), "No matching sources found", xbmcgui.NOTIFICATION_INFO, 4000)
-        xbmcplugin.setResolvedUrl(_handle, False, xbmcgui.ListItem())
-        return
+    current_query = _primary_tmdbh_query(params)
+    active_query: Optional[str] = None
 
-    show_score = _addon.getSettingBool("tmdbh_show_debug_scores")
-    labels = [_tmdbh_source_label(result, show_score) for result in results]
-    selected = xbmcgui.Dialog().select("Select Webshare source", labels)
-    if selected < 0:
-        xbmc.log("[KodiSimpleStream] TMDbH source selection cancelled", xbmc.LOGINFO)
-        xbmcplugin.setResolvedUrl(_handle, False, xbmcgui.ListItem())
-        return
+    while True:
+        results = search_and_score_tmdbh(params, active_query)
+        if not results:
+            xbmcgui.Dialog().notification(_addon.getAddonInfo("name"), "No matching sources found", xbmcgui.NOTIFICATION_INFO, 4000)
+            new_query = prompt_change_search(current_query)
+            if new_query:
+                current_query = new_query
+                active_query = new_query
+                continue
+            xbmcplugin.setResolvedUrl(_handle, False, xbmcgui.ListItem())
+            return
 
-    chosen = results[selected]
-    xbmc.log(f"[KodiSimpleStream] TMDbH selected source score={chosen['score']} name={chosen['name']}", xbmc.LOGINFO)
-    play_ident(chosen["ident"])
+        labels = [f"Search query: {current_query or 'Webshare'}  •  Change search"]
+        labels.extend(_tmdbh_source_label(result) for result in results)
+        listitems = [xbmcgui.ListItem(label=f"Search query: {current_query or 'Webshare'}", label2="Change search")]
+        listitems.extend(_tmdbh_source_listitem(result) for result in results)
+        selected = _select_tmdbh_dialog(labels, listitems)
+        if selected < 0:
+            xbmc.log("[KodiSimpleStream] TMDbH source selection cancelled", xbmc.LOGINFO)
+            xbmcplugin.setResolvedUrl(_handle, False, xbmcgui.ListItem())
+            return
+        if selected == 0:
+            new_query = prompt_change_search(current_query)
+            if new_query:
+                current_query = new_query
+                active_query = new_query
+            continue
+
+        chosen = results[selected - 1]
+        xbmc.log(f"[KodiSimpleStream] TMDbH selected source score={chosen['score']} name={chosen['name']}", xbmc.LOGINFO)
+        play_ident(chosen["ident"])
+        return
 
 
 def list_tmdbh_sources(params: Dict[str, Any]) -> None:
@@ -448,11 +516,11 @@ def list_tmdbh_sources(params: Dict[str, Any]) -> None:
         xbmcplugin.endOfDirectory(_handle)
         return
 
-    show_score = _addon.getSettingBool("tmdbh_show_debug_scores")
     for result in results:
-        label = _tmdbh_source_label(result, show_score)
-        item = xbmcgui.ListItem(label=label)
-        item.setInfo("video", {"title": result["name"], "size": result["size"]})
+        source = result.get("source") or normalize_source(result)
+        label = f"[{source['quality_label']} {source['resolution_label']}] {source['title']}"
+        item = xbmcgui.ListItem(label=label, label2=metadata_line(source, include_score=True))
+        item.setInfo("video", {"title": source["title"], "size": result["size"], "mediatype": "video"})
         item.setArt({"poster": result.get("img", ""), "fanart": result.get("img", "")})
         item.setProperty("IsPlayable", "true")
         xbmcplugin.addDirectoryItem(_handle, get_url(action="play_ident", ident=result["ident"]), item, isFolder=False)
