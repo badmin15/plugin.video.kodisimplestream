@@ -5,8 +5,11 @@ from resources.lib.source_ui import (
     detect_quality,
     detect_source_type,
     format_size,
+    metadata_line,
     normalize_source,
     source_heading,
+    source_icon_name,
+    source_title_label,
 )
 
 
@@ -58,3 +61,17 @@ def test_source_heading_keeps_modal_rows_short():
     assert label.endswith("[92]")
     assert "Size" not in label
     assert "Audio" not in label
+
+
+def test_source_icon_name_uses_existing_icon_filenames():
+    assert source_icon_name({"quality_label": "4K"}) == "4K.png"
+    assert source_icon_name({"quality_label": "FHD"}) == "FHD.png"
+    assert source_icon_name({"quality_label": "HD"}) == "hd.png"
+    assert source_icon_name({"quality_label": "SD"}) == "sd.png"
+
+
+def test_title_label_omits_quality_when_badge_art_is_used():
+    source = normalize_source({"name": "The.Matrix.1999.2160p.BluRay.x265.mkv", "size": str(5 * 1024 * 1024 * 1024)})
+    assert source_title_label(source) == "The.Matrix.1999.2160p.BluRay.x265"
+    assert not source_title_label(source).startswith("[4K 2160p]")
+    assert metadata_line(source, include_quality=True).startswith("4K 2160p | Size 5.0 GB")

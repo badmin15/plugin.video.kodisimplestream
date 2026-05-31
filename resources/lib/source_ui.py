@@ -252,8 +252,14 @@ def metadata_parts(source: Dict[str, Any], include_score: bool = False) -> List[
     return parts
 
 
-def metadata_line(source: Dict[str, Any], include_score: bool = False) -> str:
-    return " | ".join(metadata_parts(source, include_score))
+def metadata_line(source: Dict[str, Any], include_score: bool = False, include_quality: bool = False) -> str:
+    parts: List[str] = []
+    if include_quality:
+        quality = source.get("quality_label") or "SD"
+        resolution = source.get("resolution_label") or "SD"
+        parts.append(f"{quality} {resolution}")
+    parts.extend(metadata_parts(source, include_score))
+    return " | ".join(parts)
 
 
 def source_heading(source: Dict[str, Any], max_title: int = 42, include_score: bool = True) -> str:
@@ -276,3 +282,18 @@ def compact_label(source: Dict[str, Any], include_score: bool = True, max_title:
     if include_score and source.get("score") is not None:
         label += f"  [{source['score']}]"
     return label
+
+
+def source_title_label(source: Dict[str, Any], max_title: int = 54) -> str:
+    """Title-only label for rows where artwork already shows the quality badge."""
+    return ellipsize(source.get("title") or source.get("original_name") or "Unknown source", max_title)
+
+
+def source_icon_name(source: Dict[str, Any]) -> str:
+    """Return the bundled icon filename for a normalized source quality."""
+    quality = (source.get("quality_label") or "SD").upper()
+    return {
+        "4K": "4K.png",
+        "FHD": "FHD.png",
+        "HD": "hd.png",
+    }.get(quality, "sd.png")

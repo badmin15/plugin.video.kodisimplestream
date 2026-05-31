@@ -8,6 +8,7 @@ from __future__ import annotations  # Enables forward references in older Python
 
 # Kodi plugin boilerplate and plugin-specific modules
 import ast
+import os
 import sys
 from typing import Any, Dict, List, Optional
 
@@ -21,7 +22,13 @@ import xbmcplugin
 
 from resources.lib.webshare import WebshareAPI
 from resources.lib.csfd import CSFD
-from resources.lib.source_ui import compact_label, metadata_line, normalize_source, source_heading
+from resources.lib.source_ui import (
+    compact_label,
+    metadata_line,
+    normalize_source,
+    source_icon_name,
+    source_title_label,
+)
 from resources.lib.matching import (
     build_tmdbh_queries,
     parse_quality,
@@ -45,6 +52,24 @@ _api: Optional[WebshareAPI] = None
 def get_url(**kwargs: Any) -> str:
     """Returns a plugin URL with encoded parameters for recursive calls."""
     return f"{_url}?{urlencode(kwargs)}"
+
+
+def _icon_path(filename: str) -> str:
+    """Resolve a bundled image from the add-on icons directory."""
+    if not filename:
+        return ""
+    return os.path.join(_addon.getAddonInfo("path"), "icons", filename)
+
+
+def _resolution_badge_art(source: Dict[str, Any], fallback_image: str = "") -> Dict[str, str]:
+    """Artwork for source rows, using bundled resolution badges as primary art."""
+    badge = _icon_path(source_icon_name(source))
+    return {
+        "icon": badge,
+        "thumb": badge,
+        "poster": badge,
+        "fanart": fallback_image or badge,
+    }
 
 def get_api() -> Optional[WebshareAPI]:
     """
@@ -139,14 +164,16 @@ def list_search_results(search_terms: List[str]) -> None:
 
             for file_info in files:
                 source = normalize_source(file_info)
-                label = f"[{source['quality_label']} {source['resolution_label']}] {source['title']}"
-                item = xbmcgui.ListItem(label=label, label2=metadata_line(source, include_score=True))
+                item = xbmcgui.ListItem(
+                    label=source_title_label(source),
+                    label2=metadata_line(source, include_score=True, include_quality=True),
+                )
                 item.setInfo("video", {
                     "title": source.get("title") or file_info.get("name", term),
                     "size": source.get("size_bytes", 0),
                     "mediatype": "video",
                 })
-                item.setArt({"poster": file_info.get("img", ""), "fanart": file_info.get("img", "")})
+                item.setArt(_resolution_badge_art(source, file_info.get("img", "")))
                 xbmc.log(
                     f"[KodiSimpleStream] normalized Webshare source quality={source['quality_label']} "
                     f"resolution={source['resolution_label']} name={source['original_name']}",
@@ -430,15 +457,15 @@ def _tmdbh_source_label(result: Dict[str, Any]) -> str:
 def _tmdbh_source_listitem(result: Dict[str, Any]) -> xbmcgui.ListItem:
     source = _tmdbh_source(result)
     item = xbmcgui.ListItem(
-        label=source_heading(source, include_score=True),
-        label2=metadata_line(source, include_score=False),
+        label=source_title_label(source),
+        label2=metadata_line(source, include_score=True, include_quality=True),
     )
     item.setInfo("video", {
         "title": source.get("title") or result.get("name", ""),
         "size": source.get("size_bytes", result.get("size", 0)),
         "mediatype": "video",
     })
-    item.setArt({"poster": result.get("img", ""), "fanart": result.get("img", "")})
+    item.setArt(_resolution_badge_art(source, result.get("img", "")))
     return item
 
 
@@ -490,6 +517,7 @@ def select_tmdbh_source(params: Dict[str, Any]) -> None:
         labels = [f"Search query: {current_query or 'Webshare'}  •  Change search"]
         labels.extend(_tmdbh_source_label(result) for result in results)
         listitems = [xbmcgui.ListItem(label=f"Search query: {current_query or 'Webshare'}", label2="Change search")]
+        listitems[0].setArt({"icon": "DefaultAddonsSearch.png", "thumb": "DefaultAddonsSearch.png"})
         listitems.extend(_tmdbh_source_listitem(result) for result in results)
         selected = _select_tmdbh_dialog(labels, listitems)
         if selected < 0:
@@ -518,10 +546,12 @@ def list_tmdbh_sources(params: Dict[str, Any]) -> None:
 
     for result in results:
         source = result.get("source") or normalize_source(result)
-        label = f"[{source['quality_label']} {source['resolution_label']}] {source['title']}"
-        item = xbmcgui.ListItem(label=label, label2=metadata_line(source, include_score=True))
+        item = xbmcgui.ListItem(
+            label=source_title_label(source),
+            label2=metadata_line(source, include_score=True, include_quality=True),
+        )
         item.setInfo("video", {"title": source["title"], "size": result["size"], "mediatype": "video"})
-        item.setArt({"poster": result.get("img", ""), "fanart": result.get("img", "")})
+        item.setArt(_resolution_badge_art(source, result.get("img", "")))
         item.setProperty("IsPlayable", "true")
         xbmcplugin.addDirectoryItem(_handle, get_url(action="play_ident", ident=result["ident"]), item, isFolder=False)
 
