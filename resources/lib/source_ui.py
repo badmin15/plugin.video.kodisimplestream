@@ -60,6 +60,15 @@ def _languages_from_text(text: str) -> List[str]:
     return langs
 
 
+def ellipsize(text: Any, max_length: int) -> str:
+    value = _clean_text(text)
+    if max_length <= 0 or len(value) <= max_length:
+        return value
+    if max_length <= 1:
+        return "…"
+    return value[: max_length - 1].rstrip() + "…"
+
+
 def format_size(size_value: Any) -> str:
     """Format a byte count as a compact Kodi label (for example 700 MB, 1.6 GB)."""
     try:
@@ -247,14 +256,21 @@ def metadata_line(source: Dict[str, Any], include_score: bool = False) -> str:
     return " | ".join(metadata_parts(source, include_score))
 
 
-def compact_label(source: Dict[str, Any], include_score: bool = True, max_title: int = 72) -> str:
+def source_heading(source: Dict[str, Any], max_title: int = 42, include_score: bool = True) -> str:
+    """Short single-line source label for Kodi select rows that should not marquee."""
     quality = source.get("quality_label") or "SD"
     resolution = source.get("resolution_label") or "SD"
-    title = source.get("title") or source.get("original_name") or "Unknown source"
-    if len(title) > max_title:
-        title = title[: max_title - 1].rstrip() + "…"
+    title = ellipsize(source.get("title") or source.get("original_name") or "Unknown source", max_title)
     label = f"[{quality} {resolution}] {title}"
-    parts = metadata_parts(source, include_score=False)
+    if include_score and source.get("score") is not None:
+        label += f"  [{source['score']}]"
+    return label
+
+
+def compact_label(source: Dict[str, Any], include_score: bool = True, max_title: int = 42) -> str:
+    """One-line fallback label for skins/Kodi builds without detailed select rows."""
+    label = source_heading(source, max_title=max_title, include_score=False)
+    parts = metadata_parts(source, include_score=False)[:4]
     if parts:
         label += "  •  " + " • ".join(parts)
     if include_score and source.get("score") is not None:

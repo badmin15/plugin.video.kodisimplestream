@@ -6,6 +6,7 @@ from resources.lib.source_ui import (
     detect_source_type,
     format_size,
     normalize_source,
+    source_heading,
 )
 
 
@@ -44,3 +45,16 @@ def test_normalize_source_handles_missing_metadata():
     assert source["audio_langs"] == ["JA"]
     assert source["subtitle_langs"] == ["EN"]
     assert source["score"] == 72
+
+
+def test_source_heading_keeps_modal_rows_short():
+    source = normalize_source({
+        "name": "Deadpool.2016.UHD.BluRay.2160p.TrueHD.Atmos.x265.CZ.SK.EN.mkv",
+        "size": str(14 * 1024 * 1024 * 1024),
+        "score": 92,
+    })
+    label = source_heading(source, max_title=28)
+    assert label.startswith("[4K 2160p] Deadpool.2016.UHD.BluRay.21…")
+    assert label.endswith("[92]")
+    assert "Size" not in label
+    assert "Audio" not in label

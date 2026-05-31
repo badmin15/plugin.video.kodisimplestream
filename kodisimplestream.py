@@ -21,7 +21,7 @@ import xbmcplugin
 
 from resources.lib.webshare import WebshareAPI
 from resources.lib.csfd import CSFD
-from resources.lib.source_ui import compact_label, metadata_line, normalize_source
+from resources.lib.source_ui import compact_label, metadata_line, normalize_source, source_heading
 from resources.lib.matching import (
     build_tmdbh_queries,
     parse_quality,
@@ -417,10 +417,41 @@ def play_ident(ident: str) -> None:
     play_video(video_url)
 
 
-def _tmdbh_source_label(result: Dict[str, Any]) -> str:
+def _tmdbh_source(result: Dict[str, Any]) -> Dict[str, Any]:
     source = result.get("source") or normalize_source(result)
     source["score"] = result.get("score", source.get("score"))
-    return compact_label(source, include_score=True)
+    return source
+
+
+def _tmdbh_source_label(result: Dict[str, Any]) -> str:
+    return compact_label(_tmdbh_source(result), include_score=True)
+
+
+def _tmdbh_source_listitem(result: Dict[str, Any]) -> xbmcgui.ListItem:
+    source = _tmdbh_source(result)
+    item = xbmcgui.ListItem(
+        label=source_heading(source, include_score=True),
+        label2=metadata_line(source, include_score=False),
+    )
+    item.setInfo("video", {
+        "title": source.get("title") or result.get("name", ""),
+        "size": source.get("size_bytes", result.get("size", 0)),
+        "mediatype": "video",
+    })
+    item.setArt({"poster": result.get("img", ""), "fanart": result.get("img", "")})
+    return item
+
+
+def _select_tmdbh_dialog(labels: List[str], listitems: List[xbmcgui.ListItem]) -> int:
+    dialog = xbmcgui.Dialog()
+    try:
+        return dialog.select("Select Webshare source", listitems, 0, -1, True)
+    except TypeError:
+        xbmc.log(
+            "[KodiSimpleStream] detailed source picker unavailable; falling back to compact labels",
+            xbmc.LOGDEBUG,
+        )
+        return dialog.select("Select Webshare source", labels)
 
 
 def _primary_tmdbh_query(params: Dict[str, Any]) -> str:
@@ -458,7 +489,9 @@ def select_tmdbh_source(params: Dict[str, Any]) -> None:
 
         labels = [f"Search query: {current_query or 'Webshare'}  •  Change search"]
         labels.extend(_tmdbh_source_label(result) for result in results)
-        selected = xbmcgui.Dialog().select("Select Webshare source", labels)
+        listitems = [xbmcgui.ListItem(label=f"Search query: {current_query or 'Webshare'}", label2="Change search")]
+        listitems.extend(_tmdbh_source_listitem(result) for result in results)
+        selected = _select_tmdbh_dialog(labels, listitems)
         if selected < 0:
             xbmc.log("[KodiSimpleStream] TMDbH source selection cancelled", xbmc.LOGINFO)
             xbmcplugin.setResolvedUrl(_handle, False, xbmcgui.ListItem())
